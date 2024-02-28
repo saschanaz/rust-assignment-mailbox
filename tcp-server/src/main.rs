@@ -2,22 +2,29 @@ use std::collections::VecDeque;
 use std::io::{self, prelude::*};
 use std::net::{TcpListener, TcpStream};
 use std::time::Duration;
+use std::thread;
+use std::sync::{Arc, Mutex};
 
 const DEFAULT_TIMEOUT: Option<Duration> = Some(Duration::from_millis(1000));
 
 fn main() -> io::Result<()> {
     let listener = TcpListener::bind("127.0.0.1:7878")?;
 
-    let mut storage = VecDeque::new();
+    let storage = Arc::new(Mutex::new(VecDeque::new()));
 
     // accept connections and process them one at a time
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
                 println!("Got client {:?}", stream.peer_addr());
-                if let Err(e) = handle_client(stream, &mut storage) {
-                    println!("Error handling client: {:?}", e);
-                }
+                let storage = storage.clone();
+                thread::spawn(move || {
+                    let mutex = storage.as_ref();
+                    let mut lock = mutex.lock().expect("lock");
+                    if let Err(e) = handle_client(stream, &mut *lock) {
+                        println!("Error handling client: {:?}", e);
+                    }
+                });
             }
             Err(e) => {
                 println!("Error connecting: {:?}", e);
