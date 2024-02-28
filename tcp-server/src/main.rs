@@ -1,9 +1,9 @@
 use std::collections::VecDeque;
 use std::io::{self, prelude::*};
 use std::net::{TcpListener, TcpStream};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
-use tokio;
+use tokio::{self, sync::Mutex};
 
 const DEFAULT_TIMEOUT: Option<Duration> = Some(Duration::from_millis(1000));
 
@@ -20,7 +20,7 @@ async fn main() -> io::Result<()> {
                 println!("Got client {:?}", stream.peer_addr());
                 let storage = storage.clone();
                 tokio::task::spawn(async move {
-                    if let Err(e) = handle_client(stream, &storage) {
+                    if let Err(e) = handle_client(stream, &storage).await {
                         println!("Error handling client: {:?}", e);
                     }
                 });
@@ -37,7 +37,7 @@ async fn main() -> io::Result<()> {
 /// Process a single connection from a single client.
 ///
 /// Drops the stream when it has finished.
-fn handle_client(mut stream: TcpStream, storage: &Mutex<VecDeque<String>>) -> io::Result<()> {
+async fn handle_client(mut stream: TcpStream, storage: &Mutex<VecDeque<String>>) -> io::Result<()> {
     stream.set_read_timeout(DEFAULT_TIMEOUT)?;
     stream.set_write_timeout(DEFAULT_TIMEOUT)?;
 
@@ -58,10 +58,10 @@ fn handle_client(mut stream: TcpStream, storage: &Mutex<VecDeque<String>>) -> io
 
     match command {
         simple_db::Command::Publish(message) => {
-            storage.lock().expect("storage lock").push_back(message);
+            storage.lock().await.push_back(message);
             writeln!(stream, "OK")?;
         }
-        simple_db::Command::Retrieve => match storage.lock().expect("storage lock").pop_front() {
+        simple_db::Command::Retrieve => match storage.lock().await.pop_front() {
             Some(message) => writeln!(stream, "Got: {:?}", message)?,
             None => writeln!(stream, "Error: Queue empty!")?,
         },
