@@ -1,35 +1,35 @@
 use std::collections::VecDeque;
 use std::io::{self, prelude::*};
 use std::net::{TcpListener, TcpStream};
-use std::sync::Mutex;
-use std::thread;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use tokio;
 
 const DEFAULT_TIMEOUT: Option<Duration> = Some(Duration::from_millis(1000));
 
-fn main() -> io::Result<()> {
-    let listener = TcpListener::bind("127.0.0.1:7878")?;
+#[tokio::main]
+async fn main() -> io::Result<()> {
+    let listener: TcpListener = TcpListener::bind("127.0.0.1:7878")?;
 
-    let storage = Mutex::new(VecDeque::new());
+    let storage = Arc::new(Mutex::new(VecDeque::new()));
 
-    thread::scope(|scope| {
-        // accept connections and process them one at a time
-        for stream in listener.incoming() {
-            match stream {
-                Ok(stream) => {
-                    println!("Got client {:?}", stream.peer_addr());
-                    scope.spawn(|| {
-                        if let Err(e) = handle_client(stream, &storage) {
-                            println!("Error handling client: {:?}", e);
-                        }
-                    });
-                }
-                Err(e) => {
-                    println!("Error connecting: {:?}", e);
-                }
+    // accept connections and process them one at a time
+    for stream in listener.incoming() {
+        match stream {
+            Ok(stream) => {
+                println!("Got client {:?}", stream.peer_addr());
+                let storage = storage.clone();
+                tokio::task::spawn(async move {
+                    if let Err(e) = handle_client(stream, &storage) {
+                        println!("Error handling client: {:?}", e);
+                    }
+                });
+            }
+            Err(e) => {
+                println!("Error connecting: {:?}", e);
             }
         }
-    });
+    }
 
     Ok(())
 }

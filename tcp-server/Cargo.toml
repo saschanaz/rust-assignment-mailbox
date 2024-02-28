@@ -6,3 +6,4 @@ version = "0.1.0"
 
 [dependencies]
 simple-db = {path = "../simple-db"}
+tokio = { version = "1.36.0", features = ["full"] }
