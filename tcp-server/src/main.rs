@@ -19,8 +19,7 @@ fn main() -> io::Result<()> {
                 Ok(stream) => {
                     println!("Got client {:?}", stream.peer_addr());
                     scope.spawn(|| {
-                        let mut lock = storage.lock().expect("lock");
-                        if let Err(e) = handle_client(stream, &mut *lock) {
+                        if let Err(e) = handle_client(stream, &storage) {
                             println!("Error handling client: {:?}", e);
                         }
                     });
@@ -38,7 +37,7 @@ fn main() -> io::Result<()> {
 /// Process a single connection from a single client.
 ///
 /// Drops the stream when it has finished.
-fn handle_client(mut stream: TcpStream, storage: &mut VecDeque<String>) -> io::Result<()> {
+fn handle_client(mut stream: TcpStream, storage: &Mutex<VecDeque<String>>) -> io::Result<()> {
     stream.set_read_timeout(DEFAULT_TIMEOUT)?;
     stream.set_write_timeout(DEFAULT_TIMEOUT)?;
 
@@ -59,10 +58,10 @@ fn handle_client(mut stream: TcpStream, storage: &mut VecDeque<String>) -> io::R
 
     match command {
         simple_db::Command::Publish(message) => {
-            storage.push_back(message);
+            storage.lock().expect("storage lock").push_back(message);
             writeln!(stream, "OK")?;
         }
-        simple_db::Command::Retrieve => match storage.pop_front() {
+        simple_db::Command::Retrieve => match storage.lock().expect("storage lock").pop_front() {
             Some(message) => writeln!(stream, "Got: {:?}", message)?,
             None => writeln!(stream, "Error: Queue empty!")?,
         },
